@@ -1,4 +1,4 @@
-# math-grid-audit-pages COP
+# math-grid-audit-pages
 
 *description of the COP*
 

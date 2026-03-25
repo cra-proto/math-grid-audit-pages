@@ -12,17 +12,250 @@ noFooterContextual: true
 noFooterCorporate: true
 noFooterMain: true
 ---
-
 <div class="mrgn-tp-md">
     <div class="row">
-        <ul class="toc lst-spcd col-md-12">
-            <li class="col-md-4 col-sm-6"><a class="list-group-item active" data-exit="false" href="https://github.com/cra-proto/math-grid-audit-pages/tree/main">GitHub repository</a></li>
+        <ul class="toc lst-spcd col-md-12" style="list-style: none; padding-left: 0;">
+            <li class="col-md-4 col-sm-6"><a class="list-group-item active" data-exit="false" href="https://github.com/cra-proto/t1-readmes-nav-2026/tree/main">GitHub repository</a></li>
         </ul>
     </div>
 </div>
-<ul>
+
+<section class="mrgn-tp-lg">
+    <div id="page-hierarchy"></div>
+</section>
+
+<style>
+#page-hierarchy {
+  line-height: 1.2;
+}
+
+.sitemap-list {
+  list-style: none;
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
+}
+
+.sitemap-list > li {
+  margin-bottom: 0.1em;
+}
+
+#page-hierarchy details > summary {
+  margin-bottom: 0.1em;
+}
+
+#page-hierarchy > .row > section > .sitemap-list,
+#page-hierarchy > section > .sitemap-list {
+  padding-left: 0;
+}
+</style>
+
 {% assign sitePages = site.pages | sort: "url" %}
+{% assign sourceDataFiles = site.static_files | where_exp: "item", "item.path contains '/source/data/'" | sort: "path" %}
+<script id="page-hierarchy-data" type="application/json">
+{
+  "baseUrl": {{ site.baseurl | jsonify }},
+  "pages": [
+{% assign separator = "" %}
 {% for p in sitePages %}
-    <li><a href="{{ site.baseurl }}{{ p.url }}">{{ p.title | default: p.url }}</a></li>
+{% unless p.url == "/index.html"
+  or p.url == "/404.html"
+  or p.url == "/source/exit-intent-e.html"
+  or p.url == "/source/exit-intent-f.html" %}
+{{ separator }}    {
+      "url": {{ p.url | jsonify }},
+      "label": {{ p.title | default: p.url | jsonify }}
+    }
+{% assign separator = "," %}
+{% endunless %}
 {% endfor %}
-</ul>
+{% for f in sourceDataFiles %}
+{{ separator }}    {
+      "url": {{ f.path | jsonify }},
+      "label": {{ f.name | jsonify }}
+    }
+{% assign separator = "," %}
+{% endfor %}
+  ]
+}
+</script>
+
+<script>
+const pageHierarchyData = JSON.parse(
+  document.getElementById("page-hierarchy-data").textContent
+);
+const { baseUrl, pages } = pageHierarchyData;
+const languageColumns = [
+  { key: "en" },
+  { key: "fr" }
+];
+
+function createNode(name, path) {
+  return {
+    name,
+    path,
+    folders: new Map(),
+    pages: []
+  };
+}
+
+function getFolder(node, name) {
+  if (!node.folders.has(name)) {
+    const nextPath = node.path ? `${node.path}/${name}` : name;
+    node.folders.set(name, createNode(name, nextPath));
+  }
+  return node.folders.get(name);
+}
+
+const root = createNode("", "");
+
+for (const page of pages) {
+  const trimmedUrl = page.url.replace(/^\/+|\/+$/g, "");
+  if (!trimmedUrl) continue;
+
+  const parts = trimmedUrl.split("/");
+  parts.pop();
+
+  let cursor = root;
+  for (const part of parts) {
+    cursor = getFolder(cursor, part);
+  }
+
+  cursor.pages.push(page);
+}
+
+function renderTree(node, pathPrefix = "") {
+  const list = document.createElement("ul");
+  list.className = "lst-spcd sitemap-list";
+
+  const pagesList = renderPages(node.pages);
+  while (pagesList.firstChild) {
+    list.appendChild(pagesList.firstChild);
+  }
+
+  const folderNames = [...node.folders.keys()].sort((a, b) => a.localeCompare(b));
+  for (const folderName of folderNames) {
+    const folder = node.folders.get(folderName);
+    const collapsedFolder = collapseFolder(folder);
+    list.appendChild(renderFolderItem(collapsedFolder, pathPrefix));
+    pathPrefix = "";
+  }
+
+  return list;
+}
+
+function renderLanguageColumns(node) {
+  const row = document.createElement("div");
+  row.className = "row";
+
+  for (const language of languageColumns) {
+    if (!node.folders.has(language.key)) continue;
+
+    const column = document.createElement("section");
+    column.className = "col-md-6";
+    column.appendChild(renderTree(node.folders.get(language.key), `/${language.key}`));
+    row.appendChild(column);
+  }
+
+  return row;
+}
+
+function renderOtherRootContent(node) {
+  const wrapper = document.createDocumentFragment();
+  const otherFolders = [...node.folders.keys()].filter(
+    (folderName) => !languageColumns.some((language) => language.key === folderName)
+  );
+
+  if (node.pages.length > 0) {
+    const section = document.createElement("section");
+    const heading = document.createElement("h3");
+    heading.textContent = "Top-level pages";
+    section.className = "mrgn-tp-lg";
+    section.appendChild(heading);
+    section.appendChild(renderPages(node.pages));
+    wrapper.appendChild(section);
+  }
+
+  if (otherFolders.length > 0) {
+    const section = document.createElement("section");
+    const heading = document.createElement("h3");
+    const list = document.createElement("ul");
+
+    section.className = "mrgn-tp-lg";
+    heading.textContent = "Other content";
+    list.className = "lst-spcd sitemap-list";
+
+    for (const folderName of otherFolders.sort((a, b) => a.localeCompare(b))) {
+      const folder = node.folders.get(folderName);
+      const collapsedFolder = collapseFolder(folder);
+      list.appendChild(renderFolderItem(collapsedFolder));
+    }
+
+    section.appendChild(heading);
+    section.appendChild(list);
+    wrapper.appendChild(section);
+  }
+
+  return wrapper;
+}
+
+function renderPages(pagesToRender) {
+  const list = document.createElement("ul");
+  list.className = "lst-spcd sitemap-list";
+
+  const sortedPages = [...pagesToRender].sort((a, b) => a.label.localeCompare(b.label));
+  for (const page of sortedPages) {
+    const item = document.createElement("li");
+    const link = document.createElement("a");
+
+    link.href = `${baseUrl}${page.url}`;
+    link.textContent = page.label || page.url;
+    item.appendChild(link);
+    list.appendChild(item);
+  }
+
+  return list;
+}
+
+function renderFolderItem(collapsedFolder, pathPrefix = "") {
+  const item = document.createElement("li");
+  const code = document.createElement("code");
+  const childTree = renderTree(collapsedFolder.node);
+
+  code.textContent = pathPrefix ? `${pathPrefix}/${collapsedFolder.label}` : collapsedFolder.label;
+  if (collapsedFolder.path === "source/data") {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+
+    summary.appendChild(code);
+    details.appendChild(summary);
+    details.appendChild(childTree);
+    item.appendChild(details);
+  } else {
+    item.appendChild(code);
+    item.appendChild(childTree);
+  }
+
+  return item;
+}
+
+function collapseFolder(folder) {
+  const names = [folder.name];
+  let current = folder;
+
+  while (current.pages.length === 0 && current.folders.size === 1) {
+    const [nextName, nextFolder] = [...current.folders.entries()][0];
+    names.push(nextName);
+    current = nextFolder;
+  }
+
+  return {
+    label: names.join("/"),
+    node: current,
+    path: current.path
+  };
+}
+
+const pageHierarchy = document.getElementById("page-hierarchy");
+pageHierarchy.appendChild(renderLanguageColumns(root));
+pageHierarchy.appendChild(renderOtherRootContent(root));
+</script>
